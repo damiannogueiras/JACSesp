@@ -1,4 +1,4 @@
-# JACSesp
+# JACS
 
 ## Just Another Control Set - esp8266 part
 
