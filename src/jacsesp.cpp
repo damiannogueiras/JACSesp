@@ -11,6 +11,7 @@
   $ pio run -t uploadfs
 --------------------------------------------------------------------------------------------- */
 
+//#include <LittleFS.h>
 #include <FS.h>
 
 #include <ESP8266WiFi.h>
@@ -18,13 +19,12 @@
 // upload csv file
 #include <DNSServer.h>
 #include <ESP8266WebServer.h>
-#include <WiFiManager.h> 
+#include <WiFiManager.h>
 // osc server
 #include <WiFiUdp.h>
 #include <OSCMessage.h>
 #include <OSCBundle.h>
 #include <SLIPEncodedSerial.h>
-
 
 // salida por terminal
 #define DEBUG true
@@ -36,7 +36,7 @@
 
 char ssid[] = "jacs";            // your network SSID (name)
 char pass[] = "perlitalagatita"; // your network password
-const char * hostName = "JACSesp";
+const char *hostName = "JACSesp";
 
 // A UDP instance to let us send and receive packets over UDP
 WiFiUDP Udp;
@@ -53,58 +53,114 @@ OSCErrorCode error;
 ESP8266WebServer server(80);
 // a File object
 File fsUploadFile;
+// file name to store frames, siempre el mismo
+String filename = "frames.csv";
 String getContentType(String filename); // convert the file extension to the MIME type
 bool handleFileRead(String path);       // send the right file to the client (if it exists)
 void handleFileUpload();                // upload a new file to the SPIFFS
 
-String getContentType(String filename) { // convert the file extension to the MIME type
-  if (filename.endsWith(".html")) return "text/html";
-  else if (filename.endsWith(".css")) return "text/css";
-  else if (filename.endsWith(".js")) return "application/javascript";
-  else if (filename.endsWith(".ico")) return "image/x-icon";
-  else if (filename.endsWith(".gz")) return "application/x-gzip";
+String getContentType(String filename)
+{ // convert the file extension to the MIME type
+  if (filename.endsWith(".html"))
+    return "text/html";
+  else if (filename.endsWith(".css"))
+    return "text/css";
+  else if (filename.endsWith(".js"))
+    return "application/javascript";
+  else if (filename.endsWith(".ico"))
+    return "image/x-icon";
+  else if (filename.endsWith(".gz"))
+    return "application/x-gzip";
+  else if (filename.endsWith(".csv"))
+    return "text/csv";
   return "text/plain";
 }
-bool handleFileRead(String path) { // send the right file to the client (if it exists)
+bool handleFileRead(String path)
+{ // send the right file to the client (if it exists)
   Serial.println("handleFileRead: " + path);
-  if (path.endsWith("/")) path += "upload.html";          // If a folder is requested, send the upload form
-  String contentType = getContentType(path);             // Get the MIME type
+  if (path.endsWith("/"))
+    path += "upload.html";                   // If a folder is requested, send the upload form
+  String contentType = getContentType(path); // Get the MIME type
   String pathWithGz = path + ".gz";
-  if (SPIFFS.exists(pathWithGz) || SPIFFS.exists(path)) { // If the file exists, either as a compressed archive, or normal
-    if (SPIFFS.exists(pathWithGz))                         // If there's a compressed version available
-      path += ".gz";                                         // Use the compressed verion
-    File file = SPIFFS.open(path, "r");                    // Open the file
-    size_t sent = server.streamFile(file, contentType);    // Send it to the client
-    file.close();                                          // Close the file again
+  if (SPIFFS.exists(pathWithGz) || SPIFFS.exists(path))
+  {                                     // If the file exists, either as a compressed archive, or normal
+    if (SPIFFS.exists(pathWithGz))      // If there's a compressed version available
+      path += ".gz";                    // Use the compressed verion
+    File file = SPIFFS.open(path, "r"); // Open the file
+    // Send it to the client
+    size_t sent = server.streamFile(file, contentType); 
+
     Serial.println(String("\tSent file: ") + path);
+    file.close(); // Close the file again
     return true;
   }
-  Serial.println(String("\tFile Not Found: ") + path);   // If the file doesn't exist, return false
+  // If the file doesn't exist, return false
   return false;
+  Serial.println(String("\tFile Not Found: ") + path);
 }
-void handleFileUpload(){ // upload a new file to the SPIFFS
-  HTTPUpload& upload = server.upload();
-  if(upload.status == UPLOAD_FILE_START){
-    String filename = upload.filename;
-    if(!filename.startsWith("/")) filename = "/"+filename;
-    Serial.print("handleFileUpload Name: "); Serial.println(filename);
-    fsUploadFile = SPIFFS.open(filename, "w");            // Open the file for writing in SPIFFS (create if it doesn't exist)
+
+/*
+ * upload a new file to the SPIFFS
+ */
+void handleFileUpload()
+{
+  HTTPUpload &upload = server.upload();
+  // use the same file ever
+  Serial.print("Upload start");
+  if (upload.status == UPLOAD_FILE_START)
+  {
+
+    if (!filename.startsWith("/"))
+      filename = "/" + filename;
+    Serial.print("Upload start");
+    Serial.print(" handleFileUpload Name: ");
+    Serial.println(filename);
+    fsUploadFile = SPIFFS.open(filename, "w"); // Open the file for writing in SPIFFS (create if it doesn't exist)
     filename = String();
-  } else if(upload.status == UPLOAD_FILE_WRITE){
-    if(fsUploadFile)
+  }
+  else if (upload.status == UPLOAD_FILE_WRITE)
+  {
+    if (fsUploadFile)
       fsUploadFile.write(upload.buf, upload.currentSize); // Write the received bytes to the file
-  } else if(upload.status == UPLOAD_FILE_END){
-    if(fsUploadFile) {                                    // If the file was successfully created
-      fsUploadFile.close();                               // Close the file again
-      Serial.print("handleFileUpload Size: "); Serial.println(upload.totalSize);
-      server.sendHeader("Location","/success.html");      // Redirect the client to the success page
+    Serial.println(" upload_file_write");
+  }
+  else if (upload.status == UPLOAD_FILE_END)
+  {
+
+    if (fsUploadFile)
+    {
+      //fsUploadFile.close(); // Close the file again
+      Serial.print(" handleFileUpload Size: ");
+      Serial.println(upload.totalSize);
+
+      fsUploadFile.close();
+      // send OK to client
+      server.sendHeader("Location", "/success.html"); // Redirect the client to the success page
       server.send(303);
-    } else {
-      server.send(500, "text/plain", "500: couldn't create file");
     }
+  }
+  else
+  {
+    server.send(500, "text/plain", "500: couldn't create file");
   }
 }
 
+bool sendFramesMega()
+{
+  if (!filename.startsWith("/"))
+      filename = "/" + filename;
+  File framesFile = SPIFFS.open(filename, "r");
+  Serial.print("Tamanho: ");
+  Serial.println(framesFile.size());
+  while (framesFile.available() > 0)
+  {
+    // leemos cada linea
+    String frame = framesFile.readStringUntil('\n');
+    Serial.print("->");
+    Serial.println(frame);
+  }
+  return true;
+}
 
 /**
  * enciende o apaga los leds de informacion
@@ -195,27 +251,43 @@ void setup()
 
   // file system
   SPIFFS.begin();
+
   server.on("/upload", HTTP_GET, []() {                 // if the client requests the upload page
     if (!handleFileRead("/upload.html"))                // send it if it exists
       server.send(404, "text/plain", "404: Not Found"); // otherwise, respond with a 404 (Not Found) error
   });
 
-  server.on("/upload", HTTP_POST,                       // if the client posts to the upload page
-    [](){ server.send(200); },                          // Send status 200 (OK) to tell the client we are ready to receive
-    handleFileUpload                                    // Receive and save the file
-  );
+  server.on(
+      "/", HTTP_POST,             // if the client posts to the upload page
+      []() { server.send(200); }, // Send status 200 (OK) to tell the client we are ready to receive
+      handleFileUpload);
+
+  server.on(
+      "/upload", HTTP_POST,       // if the client posts to the upload page
+      []() { server.send(200); }, // Send status 200 (OK) to tell the client we are ready to receive
+      handleFileUpload);
+
+  server.on(
+      "/upload.html", HTTP_POST,  // if the client posts to the upload page
+      []() { server.send(200); }, // Send status 200 (OK) to tell the client we are ready to receive
+      handleFileUpload);
+
+  server.on("/mega", HTTP_GET, []() {                   // if the client requests the upload page
+    if (!sendFramesMega()){
+      // error
+      server.send(404, "text/plain", "Error enviando a Mega");
+    } else {
+      server.send(200, "text/plain", "Datos enviados al Mega");
+    }                
+  });
 
   server.onNotFound([]() {                              // If the client requests any URI
     if (!handleFileRead(server.uri()))                  // send it if it exists
       server.send(404, "text/plain", "404: Not Found"); // otherwise, respond with a 404 (Not Found) error
   });
 
-  server.begin();                           // Actually start the server
+  server.begin(); // Actually start the server
   Serial.println("HTTP server started");
-  
-
-
-
 }
 
 void loop()
@@ -251,5 +323,4 @@ void loop()
   infoLeds(0, 1, 0);
 
   server.handleClient();
-
 }
