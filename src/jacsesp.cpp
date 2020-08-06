@@ -11,7 +11,6 @@
   $ pio run -t uploadfs
 --------------------------------------------------------------------------------------------- */
 
-//#include <LittleFS.h>
 #include <FS.h>
 
 #include <ESP8266WiFi.h>
@@ -145,20 +144,109 @@ void handleFileUpload()
   }
 }
 
+/*
+ * Parse csv
+ * https://forum.arduino.cc/index.php?topic=340849.0
+ * 
+ * file - csv file
+ * str - Character array for the field.
+ * size - Size of str array.
+ * delim - String containing field delimiters.
+ * return - length of field including terminating delimiter.
+ *
+ * Note, the last character of str will not be a delimiter if
+ * a read error occurs, the field is too long, or the file
+ * does not end with a delimiter.  Consider this an error
+ * if not at end-of-file.
+ *
+ */
+size_t readField(File* file, char* str, size_t size, char* delim) {
+  uint8_t ch;
+  size_t n = 0;
+  while ((n + 1) < size && file->read(&ch, 1) == 1) {
+    // Delete CR.
+    if (ch == '\r') {
+      continue;
+    }
+    str[n++] = ch;
+    if (strchr(delim, ch)) {
+        break;
+    }
+  }
+  str[n] = '\0';
+  return n;
+}
+
+/*
+ * Read frames file and send datas to mega
+ */
 bool sendFramesMega()
 {
   if (!filename.startsWith("/"))
       filename = "/" + filename;
   File framesFile = SPIFFS.open(filename, "r");
+  // Rewind the file for read.
+  framesFile.seek(0);
   Serial.print("Tamanho: ");
   Serial.println(framesFile.size());
+
+  size_t n;      // Length of returned field with delimiter.
+  char str[20];  // Must hold longest field with delimiter and zero byte.
+  
+  // Read the file and print fields.
+  while (true) {
+    n = readField(&framesFile, str, sizeof(str), ",\n");
+
+    // done if Error or at EOF.
+    if (n == 0) break;
+
+    // Print the type of delimiter.
+    if (str[n-1] == ',' || str[n-1] == '\n') {
+      Serial.print(str[n-1] == ',' ? F("comma: ") : F("endl:  "));
+      
+      // Remove the delimiter.
+      str[n-1] = 0;
+    } else {
+      // At eof, too long, or read error.  Too long is error.
+      Serial.print(framesFile.available() ? F("error: ") : F("eof:   "));
+    }
+    // Print the field.
+    Serial.println(str);
+  }
+  framesFile.close();
+  /*// Read the file and print fields.
+  while (true) {
+    n = readField(&file, str, sizeof(str), ",\n");
+
+    // done if Error or at EOF.
+    if (n == 0) break;
+
+    // Print the type of delimiter.
+    if (str[n-1] == ',' || str[n-1] == '\n') {
+      Serial.print(str[n-1] == ',' ? F("comma: ") : F("endl:  "));
+      
+      // Remove the delimiter.
+      str[n-1] = 0;
+    } else {
+      // At eof, too long, or read error.  Too long is error.
+      Serial.print(file.available() ? F("error: ") : F("eof:   "));
+    }
+    // Print the field.
+    Serial.println(str);
+  }
+  file.close();
   while (framesFile.available() > 0)
   {
     // leemos cada linea
-    String frame = framesFile.readStringUntil('\n');
+    String frame_S = framesFile.readStringUntil('\n');
+    char *frame_c;
+    frame_S.toCharArray(frame_c, frame_S.length());
+    // initialize first part (string, delimiter)
+    char delimiter[] = ",";
+    char* ptr = strtok(frame_c, delimiter);
     Serial.print("->");
-    Serial.println(frame);
-  }
+    Serial.println(ptr);
+  }*/
   return true;
 }
 
