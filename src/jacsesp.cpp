@@ -273,7 +273,7 @@ void setup()
     // inicio
     infoLeds(1, 0, 0);
 
-    SLIPSerial.begin(115200);
+    SLIPSerial.begin(57600);
     //Serial.begin(9600);
     if (DEBUG) Serial.setDebugOutput(true);
 
