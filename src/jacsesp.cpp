@@ -334,7 +334,8 @@ void setup()
         []() { server.send(200); }, // Send status 200 (OK) to tell the client we are ready to receive
         handleFileUpload);
 
-    server.on("/mega", HTTP_GET, []() {                   // if the client requests the upload page
+    // cliente solicita enviar frames al mega
+    server.on("/mega", HTTP_GET, []() {
         if (!sendFramesMega()) {
             // error
             server.send(404, "text/plain", "Error enviando a Mega");
